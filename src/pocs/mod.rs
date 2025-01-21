@@ -7,6 +7,9 @@ use crate::core::AsyncPoc;
 
 pub mod example;
 pub mod redis;
+pub mod manager;
+
+pub use manager::{PocManager, PocInfo};
 
 /// POC Registry for managing all available POC plugins
 #[derive(Default)]

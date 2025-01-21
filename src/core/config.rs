@@ -141,6 +141,14 @@ pub enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// List all available POC plugins
+    List,
+    /// Search POC plugins by keyword
+    Search {
+        /// Search keyword
+        #[arg(short, long)]
+        keyword: String,
+    },
 }
 
 #[derive(Deserialize, Debug)]
@@ -166,37 +174,38 @@ impl ConfigManager {
     pub fn init() -> PocConfig {
         let args = Args::parse();
         
-        // 首先尝试从配置文件加载配置
-        let mut config = if let Some(config_path) = args.config.as_ref() {
-            match PocConfig::from_file(Path::new(config_path)) {
-                Ok(config) => config,
-                Err(_) => {
-                    // 尝试加载YAML配置
-                    if let Some(yaml_config) = ConfigManager::load_yaml_config(config_path) {
-                        PocConfig {
-                            target: yaml_config.target,
-                            timeout: yaml_config.timeout.unwrap_or(30),
-                            headers: yaml_config.headers.unwrap_or_default(),
-                            verify: yaml_config.verify.unwrap_or(false),
-                            exploit: yaml_config.exploit.unwrap_or(false),
-                            poc_name: yaml_config.poc_name,
-                            plugins: yaml_config.plugins.unwrap_or_default(),
-                        }
-                    } else {
-                        PocConfig::default()
-                    }
-                }
+        // 1. 首先创建默认配置（最低优先级）
+        let mut config = PocConfig::default();
+        
+        // 2. 加载配置文件（高优先级）
+        if let Some(config_path) = args.config.as_ref() {
+            // 尝试加载配置文件
+            let file_config = match PocConfig::from_file(Path::new(config_path)) {
+                Ok(cfg) => Some(cfg),
+                Err(_) => ConfigManager::load_yaml_config(config_path).map(|yaml_config| PocConfig {
+                    target: yaml_config.target,
+                    timeout: yaml_config.timeout.unwrap_or(30),
+                    headers: yaml_config.headers.unwrap_or_default(),
+                    verify: yaml_config.verify.unwrap_or(false),
+                    exploit: yaml_config.exploit.unwrap_or(false),
+                    poc_name: yaml_config.poc_name,
+                    plugins: yaml_config.plugins.unwrap_or_default(),
+                })
+            };
+            
+            // 如果成功加载配置文件，使用其覆盖默认配置
+            if let Some(file_cfg) = file_config {
+                config = file_cfg;
             }
-        } else {
-            PocConfig::default()
-        };
-    
-        // 首先处理全局参数
-        if let Some(target) = &args.target {
-            config.target = Some(target.clone());
         }
-        if let Some(poc) = &args.poc {
-            config.poc_name = Some(poc.clone());
+        
+        // 3. 应用命令行参数（优先级最高）
+        // 3.1 处理全局参数
+        if args.target.is_some() {
+            config.target = args.target.clone();
+        }
+        if args.poc.is_some() {
+            config.poc_name = args.poc.clone();
         }
         if args.verify {
             config.verify = true;
@@ -207,14 +216,14 @@ impl ConfigManager {
         if args.timeout > 0 {
             config.timeout = args.timeout;
         }
-
-        // 然后处理子命令中的参数，它们会覆盖全局参数
+        
+        // 3.2 处理子命令参数（最高优先级）
         if let Some(Commands::Scan { target, poc, verify, exploit, .. }) = &args.command {
-            if let Some(t) = target {
-                config.target = Some(t.clone());
+            if target.is_some() {
+                config.target = target.clone();
             }
-            if let Some(p) = poc {
-                config.poc_name = Some(p.clone());
+            if poc.is_some() {
+                config.poc_name = poc.clone();
             }
             if *verify {
                 config.verify = true;
@@ -223,7 +232,7 @@ impl ConfigManager {
                 config.exploit = true;
             }
         }
-    
+        
         config
     }
 

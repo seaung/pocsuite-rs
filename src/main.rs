@@ -3,24 +3,75 @@ use clap::Parser;
 use pocsuite_rs::core::config::{ConfigManager, print_completions, Args, Commands};
 use pocsuite_rs::ui::{show_banner, create_spinner};
 use pocsuite_rs::discovery::scanner::Scanner;
+use pocsuite_rs::pocs::PocManager;
 
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
     
-    // 根据verbose参数设置日志级别
-    let env = env_logger::Env::default()
-        .filter_or("RUST_LOG", if args.verbose { "debug" } else { "info" });
-    env_logger::Builder::from_env(env)
-        .format_timestamp(Some(env_logger::TimestampPrecision::Millis))
-        .init();
     show_banner();
-
-    let args = Args::parse();
+    
+    // 初始化日志系统
+    env_logger::Builder::new()
+        .filter_level(if args.verbose { log::LevelFilter::Debug } else { log::LevelFilter::Info })
+        .format_timestamp(Some(env_logger::TimestampPrecision::Millis))
+        .format_target(true)
+        .format_module_path(true)
+        .init();
+    
+    log::debug!("命令行参数: {:?}", args);
     
     match args.command {
         Some(Commands::Completion { shell }) => {
             print_completions(shell);
+            return;
+        }
+        Some(Commands::List) => {
+            let spinner = create_spinner("正在加载POC插件列表...");
+            let poc_manager = PocManager::new();
+            let pocs = poc_manager.list().await;
+            spinner.finish_with_message("POC插件列表加载完成！");
+            
+            println!("
+可用的POC插件列表:
+");
+            println!("{:<30} {:<15} {}", "名称", "漏洞类型", "描述");
+            println!("{:-<80}", "");
+            
+            for poc in pocs {
+                println!("{:<30} {:<15} {}",
+                    poc.name,
+                    poc.vuln_type,
+                    poc.description
+                );
+            }
+            return;
+        }
+        Some(Commands::Search { keyword }) => {
+            let spinner = create_spinner("正在搜索POC插件...");
+            let poc_manager = PocManager::new();
+            let pocs = poc_manager.search(&keyword).await;
+            spinner.finish_with_message("POC插件搜索完成！");
+            
+            if pocs.is_empty() {
+                println!("
+未找到匹配的POC插件。");
+                return;
+            }
+            
+            println!("
+搜索结果:
+");
+            println!("{:<30} {:<15} {}", "名称", "漏洞类型", "描述");
+            println!("{:-<80}", "");
+            
+            for poc in pocs {
+                println!("{:<30} {:<15} {}",
+                    poc.name,
+                    poc.vuln_type,
+                    poc.description
+                );
+            }
             return;
         }
         Some(Commands::Discover { target, file, ports, threads, output }) => {
@@ -42,13 +93,19 @@ async fn main() {
                 return;
             };
             
+            log::debug!("扫描目标: {}", targets.join(","));
+            log::debug!("端口配置: {:?}", ports);
+            log::debug!("并发线程数: {}", threads);
+            
             let scanner = Scanner::new(targets.join(","), ports, threads);
             match scanner.scan().await {
                 Ok(hosts) => {
                     spinner.finish_with_message("资产发现完成！");
                     
                     // 打印扫描结果
-                    println!("\n扫描结果:\n");
+                    println!("
+扫描结果:
+");
                     println!("IP地址\t\t开放端口\t服务信息");
                     println!("-----------------------------------------");
                     
@@ -70,7 +127,8 @@ async fn main() {
                             if let Err(e) = std::fs::write(&output_path, json) {
                                 eprintln!("保存结果到文件失败: {}", e);
                             } else {
-                                println!("\n扫描结果已保存到: {}", output_path);
+                                println!("
+扫描结果已保存到: {}", output_path);
                             }
                         }
                     }
@@ -91,6 +149,15 @@ async fn main() {
             let spinner = create_spinner("正在加载配置...");
             let config = ConfigManager::init();
             spinner.finish_with_message("配置加载完成！");
+            
+            log::debug!("详细配置信息:");
+            log::debug!("- 目标: {:?}", config.target);
+            log::debug!("- 超时时间: {}秒", config.timeout);
+            log::debug!("- 自定义请求头: {:?}", config.headers);
+            log::debug!("- 验证模式: {}", config.verify);
+            log::debug!("- 利用模式: {}", config.exploit);
+            log::debug!("- POC名称: {:?}", config.poc_name);
+            log::debug!("- 插件列表: {:?}", config.plugins);
             
             info!("Starting pocsuite-rs with config: {:?}", config);
         }
