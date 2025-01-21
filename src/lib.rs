@@ -5,6 +5,7 @@ pub mod http;
 pub mod pocs;
 pub mod utils;
 pub mod ui;
+pub mod discovery;
 
 pub use crate::core::{Poc, PocConfig, PocResult, PocError};
 pub use crate::http::HttpClient;

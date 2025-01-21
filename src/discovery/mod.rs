@@ -9,6 +9,7 @@ use std::net::IpAddr;
 use std::collections::HashMap;
 use tokio::time::Duration;
 use thiserror::Error;
+use serde::Serialize;
 
 /// 资产发现错误类型
 #[derive(Debug, Error)]
@@ -27,7 +28,7 @@ pub enum DiscoveryError {
 }
 
 /// 主机信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Host {
     /// IP地址
     pub ip: IpAddr,
@@ -40,7 +41,7 @@ pub struct Host {
 }
 
 /// 服务信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ServiceInfo {
     /// 服务名称
     pub name: String,
