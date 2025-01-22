@@ -177,30 +177,7 @@ impl ConfigManager {
         // 1. 首先创建默认配置（最低优先级）
         let mut config = PocConfig::default();
         
-        // 2. 加载配置文件（高优先级）
-        if let Some(config_path) = args.config.as_ref() {
-            // 尝试加载配置文件
-            let file_config = match PocConfig::from_file(Path::new(config_path)) {
-                Ok(cfg) => Some(cfg),
-                Err(_) => ConfigManager::load_yaml_config(config_path).map(|yaml_config| PocConfig {
-                    target: yaml_config.target,
-                    timeout: yaml_config.timeout.unwrap_or(30),
-                    headers: yaml_config.headers.unwrap_or_default(),
-                    verify: yaml_config.verify.unwrap_or(false),
-                    exploit: yaml_config.exploit.unwrap_or(false),
-                    poc_name: yaml_config.poc_name,
-                    plugins: yaml_config.plugins.unwrap_or_default(),
-                })
-            };
-            
-            // 如果成功加载配置文件，使用其覆盖默认配置
-            if let Some(file_cfg) = file_config {
-                config = file_cfg;
-            }
-        }
-        
-        // 3. 应用命令行参数（优先级最高）
-        // 3.1 处理全局参数
+        // 2. 处理全局参数（中等优先级）
         if args.target.is_some() {
             config.target = args.target.clone();
         }
@@ -217,8 +194,47 @@ impl ConfigManager {
             config.timeout = args.timeout;
         }
         
-        // 3.2 处理子命令参数（最高优先级）
-        if let Some(Commands::Scan { target, poc, verify, exploit, .. }) = &args.command {
+        // 3. 处理子命令参数
+        if let Some(Commands::Scan { target, poc, verify, exploit, config: scan_config, .. }) = &args.command {
+            // 3.1 如果子命令中指定了配置文件，优先使用该配置
+            if let Some(config_path) = scan_config {
+                let file_config = match PocConfig::from_file(Path::new(config_path)) {
+                    Ok(cfg) => Some(cfg),
+                    Err(_) => ConfigManager::load_yaml_config(config_path).map(|yaml_config| PocConfig {
+                        target: yaml_config.target,
+                        timeout: yaml_config.timeout.unwrap_or(30),
+                        headers: yaml_config.headers.unwrap_or_default(),
+                        verify: yaml_config.verify.unwrap_or(false),
+                        exploit: yaml_config.exploit.unwrap_or(false),
+                        poc_name: yaml_config.poc_name,
+                        plugins: yaml_config.plugins.unwrap_or_default(),
+                    })
+                };
+                
+                if let Some(file_cfg) = file_config {
+                    config = file_cfg;
+                }
+            } else if let Some(config_path) = args.config.as_ref() {
+                // 3.2 如果全局参数中指定了配置文件，使用该配置
+                let file_config = match PocConfig::from_file(Path::new(config_path)) {
+                    Ok(cfg) => Some(cfg),
+                    Err(_) => ConfigManager::load_yaml_config(config_path).map(|yaml_config| PocConfig {
+                        target: yaml_config.target,
+                        timeout: yaml_config.timeout.unwrap_or(30),
+                        headers: yaml_config.headers.unwrap_or_default(),
+                        verify: yaml_config.verify.unwrap_or(false),
+                        exploit: yaml_config.exploit.unwrap_or(false),
+                        poc_name: yaml_config.poc_name,
+                        plugins: yaml_config.plugins.unwrap_or_default(),
+                    })
+                };
+                
+                if let Some(file_cfg) = file_config {
+                    config = file_cfg;
+                }
+            }
+            
+            // 3.3 最后应用子命令中的具体参数（最高优先级）
             if target.is_some() {
                 config.target = target.clone();
             }
@@ -230,6 +246,24 @@ impl ConfigManager {
             }
             if *exploit {
                 config.exploit = true;
+            }
+        } else if let Some(config_path) = args.config.as_ref() {
+            // 4. 如果不是scan子命令但指定了配置文件，加载该配置
+            let file_config = match PocConfig::from_file(Path::new(config_path)) {
+                Ok(cfg) => Some(cfg),
+                Err(_) => ConfigManager::load_yaml_config(config_path).map(|yaml_config| PocConfig {
+                    target: yaml_config.target,
+                    timeout: yaml_config.timeout.unwrap_or(30),
+                    headers: yaml_config.headers.unwrap_or_default(),
+                    verify: yaml_config.verify.unwrap_or(false),
+                    exploit: yaml_config.exploit.unwrap_or(false),
+                    poc_name: yaml_config.poc_name,
+                    plugins: yaml_config.plugins.unwrap_or_default(),
+                })
+            };
+            
+            if let Some(file_cfg) = file_config {
+                config = file_cfg;
             }
         }
         
