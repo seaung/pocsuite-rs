@@ -4,12 +4,14 @@ use pocsuite_rs::core::config::{ConfigManager, print_completions, Args, Commands
 use pocsuite_rs::ui::{show_banner, create_spinner};
 use pocsuite_rs::discovery::scanner::Scanner;
 use pocsuite_rs::pocs::PocManager;
+use pocsuite_rs::core::{PocResult, PocConfig};
+use pocsuite_rs::ui::table::ResultTable;
 
 #[tokio::main]
 async fn main() {
-    let args = Args::parse();
-    
     show_banner();
+    
+    let args = Args::parse();
     
     // 初始化日志系统
     env_logger::Builder::new()
@@ -160,6 +162,82 @@ async fn main() {
             log::debug!("- 插件列表: {:?}", config.plugins);
             
             info!("Starting pocsuite-rs with config: {:?}", config);
+            
+            // 检查是否有目标
+            if config.target.is_none() {
+                eprintln!("错误：未指定目标");
+                return;
+            }
+            
+            // 加载POC插件
+            let spinner = create_spinner("正在加载POC插件...");
+            let poc_manager = PocManager::new();
+            
+            // 获取指定的POC插件
+            let poc_name = if let Some(name) = config.poc_name {
+                name
+            } else {
+                spinner.finish_with_message("错误：未指定POC插件");
+                eprintln!("请使用 -p 参数指定要使用的POC插件");
+                return;
+            };
+            
+            // 执行POC检测
+            let target = config.target.unwrap();
+            info!("正在对目标 {} 执行 {} POC检测...", target, poc_name);
+            
+            // 创建结果表格
+            let mut result_table = ResultTable::new();
+            
+            // 解析目标列表
+            let targets: Vec<String> = target.split(',').map(|s| s.trim().to_string()).collect();
+            
+            // 对每个目标执行POC检测
+            for target in targets {
+                let mut poc_config = PocConfig {
+                    target: target.clone(),
+                    timeout: config.timeout,
+                    headers: config.headers.clone(),
+                    verify: config.verify,
+                    exploit: config.exploit,
+                };
+                
+                // 根据verify和exploit标志执行相应模式
+                if config.verify {
+                    info!("执行验证模式...");
+                    if let Ok(poc) = poc_manager.get_poc(&poc_name).await {
+                        match poc.verify(&poc_config).await {
+                            Ok(result) => result_table.add_result(result),
+                            Err(e) => result_table.add_result(PocResult {
+                                success: false,
+                                name: poc_name.clone(),
+                                target: poc_config.target.clone(),
+                                details: Some(format!("检测失败: {}", e)),
+                            }),
+                        }
+                    }
+                }
+                
+                if config.exploit {
+                    info!("执行利用模式...");
+                    if let Ok(poc) = poc_manager.get_poc(&poc_name).await {
+                        match poc.exploit(&poc_config).await {
+                            Ok(result) => result_table.add_result(result),
+                            Err(e) => result_table.add_result(PocResult {
+                                success: false,
+                                name: poc_name.clone(),
+                                target: poc_config.target,
+                                details: Some(format!("利用失败: {}", e)),
+                            }),
+                        }
+                    }
+                }
+            }
+            
+            spinner.finish_with_message("POC检测完成！");
+            
+            // 显示检测结果表格
+            result_table.display();
         }
     }
 }

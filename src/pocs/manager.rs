@@ -1,14 +1,30 @@
-#[derive(Debug, Default)]
-pub struct PocRegistry;
+use std::sync::Arc;
+use crate::core::AsyncPoc;
+
+#[derive(Default)]
+pub struct PocRegistry {
+    pocs: Arc<tokio::sync::RwLock<std::collections::HashMap<String, Arc<Box<dyn AsyncPoc + Send + Sync>>>>>,
+}
 
 impl PocRegistry {
+    pub fn new() -> Self {
+        Self {
+            pocs: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        }
+    }
+
+    pub async fn get(&self, name: &str) -> Option<Arc<Box<dyn AsyncPoc + Send + Sync>>> {
+        let pocs = self.pocs.read().await;
+        pocs.get(name).cloned()
+    }
+
     pub async fn list(&self) -> Vec<String> {
         // TODO: 实现从文件系统或其他来源加载POC插件列表
         vec!["example".to_string(), "redis".to_string()]
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct PocManager {
     registry: PocRegistry,
 }
@@ -23,6 +39,11 @@ pub struct PocInfo {
 impl PocManager {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub async fn get_poc(&self, name: &str) -> Result<Arc<Box<dyn AsyncPoc + Send + Sync>>, Box<dyn std::error::Error>> {
+        self.registry.get(name).await
+            .ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, format!("POC {} not found", name))) as Box<dyn std::error::Error>)
     }
     
     pub async fn list(&self) -> Vec<PocInfo> {

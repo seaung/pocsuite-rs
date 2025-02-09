@@ -9,4 +9,5 @@ pub mod discovery;
 
 pub use crate::core::{Poc, PocConfig, PocResult, PocError};
 pub use crate::http::HttpClient;
-pub use crate::pocs::ExamplePoc;
+pub use crate::pocs::{ExamplePoc, PocManager};
+pub use crate::ui::table::ResultTable;

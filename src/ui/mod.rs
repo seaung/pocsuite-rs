@@ -3,6 +3,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rand::seq::SliceRandom;
 use std::time::Duration;
 
+pub mod table;
+
 const BANNERS: [&str; 3] = [
     r#"
     ____                      _ __                        
